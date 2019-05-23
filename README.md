@@ -4,6 +4,7 @@ crop damage in the U.S. from 1950 to 2011.
 
 ## files
 data: raw data downloaded from web
+rsconnect: for Rpub
 stormData.html: the html version of the report
 stormData.Rmd:the Rmd version of the report
 

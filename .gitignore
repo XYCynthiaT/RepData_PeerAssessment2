@@ -1,2 +1,4 @@
 data/
+stormData_cache/
+stormData_files/
 .Rhistory
