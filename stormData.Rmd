@@ -20,8 +20,8 @@ the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database
 The database recorded measurements for public health and economic consequences with
 the estimates of any fatalities, injuries, and property damage.
 We found that the tornado was the most harmful to overall public health in the U.S. from
-1950 to 2011. It also caused most property damage followed by a flash flood. 
-The hail caused most crop damage.
+1950 to 2011. The flood caused the greatest property and overall economic damage. 
+The drought caused most crop damage.
 
 ## Downloading files
 
@@ -33,6 +33,15 @@ if(!file.exists("./data")) dir.create("data")
 download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",
               "./data/stormData.csv.bz2", mode = "wb")
 ```
+
+## Loading packages
+```{r packages, results='hide'}
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+```
+
 
 ## Data processing
 
@@ -46,18 +55,53 @@ data <- read.csv("./data/stormData.csv.bz2", na.strings = "", stringsAsFactors =
 dim(data)
 names(data) <- tolower(names(data))
 data$evtype <- tolower(data$evtype)
+head(data)
+names(data)
 ```
 
-The fatalities and injuries columns contain the health measurements. The propdmg
-and cropdmg columns contain the economic consequence measurements. The evtype 
-column contains event types. Here, we make a brief summary of these columns.
+The `fatalities` and `injuries` columns contain the health measurements. The `propdmg`
+and `cropdmg` columns contain the economic consequence measurements. The `propdmgex`
+and `cropdmgex` indicated the exponent of property damage and crop damage. The `evtype` 
+column contains event types. Here, we extra these colums and make a brief summary of these columns.
 
 ```{r columnSummary}
-summary(data$fatalities)
-summary(data$injuries)
-summary(data$propdmg)
-summary(data$cropdmg)
-length(unique(data$evtype))
+subdata <- data[, c(8, 23:28)]
+str(subdata)
+length(unique(subdata$evtype))
+unique(subdata$propdmgex)
+unique(subdata$cropdmgex)
+```
+
+Then, we calculated the actual values with given exponent. 
+
+```{r actualValues, cache=TRUE}
+subdata$propdmgexp <- tolower(subdata$propdmgexp)
+subdata$cropdmgexp <- tolower(subdata$cropdmgexp)
+trans <- function(exp = "") {
+        switch(exp, 
+               "-" = 0.1,
+               "?" = 1,
+               "+" = 1,
+               "1" = 1,
+               "2" = 100,
+               "3" = 1000,
+               "4" = 10000,
+               "5" = 10^5,
+               "6" = 10^6,
+               "7" = 10^7,
+               "8" = 10^8,
+               "h" = 100,
+               "k" = 1000,
+               "m" = 10^6,
+               "b" = 10^9,
+               0
+               )
+}
+actual <- function(x, exp){
+        x * trans(exp)
+}
+subdata$propdmga <- purrr::map2_dbl(subdata[, 4], subdata[, 5], actual)
+subdata$cropdmga <- purrr::map2_dbl(subdata[, 6], subdata[, 7], actual)
 ```
 
 ## Results
@@ -74,8 +118,7 @@ public health and the corresponding number of people suffered.
 The y-aixs is shown in log10 scale.
 
 ```{r health}
-library(dplyr)
-health <- data %>%
+health <- subdata %>%
         group_by(evtype) %>%
         summarise(fatalities = sum(fatalities, na.rm = T), 
                   injuries = sum(injuries, na.rm = T),
@@ -83,8 +126,6 @@ health <- data %>%
         arrange(desc(both), desc(fatalities), desc(injuries))
 health10 <- health[1:10,]
 
-library(ggplot2)
-library(gridExtra)
 both <- ggplot(data = health10, aes(reorder(evtype, both), both)) + 
         geom_bar(stat = "identity", fill = "blue") +
         scale_y_log10()+
@@ -101,16 +142,16 @@ injury <- ggplot(data = health10, aes(reorder(evtype, injuries), injuries)) +
         coord_flip() +
         labs(y = "Total number of injuries", x = "event type") 
 grid.arrange(both, fatal, injury, 
-             top = "Top 10 types of weather events that caused severe population health problems")
+             top = "The top 10 types of weather events that caused severe population health problems")
 
 ```
 
-Tornado was most harmful to population health in the U.S. from 1950 to 
+the tornado was most harmful to population health in the U.S. from 1950 to 
 2011. as it caused most fatalities and injuries. 
-Excessive heat caused the second most fatalities and TSTM wind
+The excessive heat caused the second most fatalities and the TSTM wind
 caused the second most injuries.
 
-## Impacts of Severe Weather Event on economic damage
+### Impacts of Severe Weather Event on economic damage
 
 Similar to the population health part, we calculated the sum of property 
 damage and crop damage as well as the sum of both by each type of events.
@@ -119,37 +160,33 @@ overall economic damage, the secondary index, property damage, and the third
 index, crop damage.  
 
 The figure below showed the top 10 event types that caused the greatest economic 
-damage and the estimates of corresponding damage in dollars. 
-The y-axis is shown in log10 scale.
+damage and the estimates of corresponding damage in billion dollars. 
 
 ```{r economy}
-economy <- data %>%
+economy <- subdata %>%
         group_by(evtype) %>%
-        summarise(propdmg = sum(propdmg, na.rm = T), 
-                  cropdmg = sum(cropdmg, na.rm = T),
+        summarise(propdmg = sum(propdmga, na.rm = T)/10^9, 
+                  cropdmg = sum(cropdmga, na.rm = T)/10^9,
                   both = propdmg + cropdmg) %>%
         arrange(desc(both), desc(propdmg), desc(cropdmg))
 economy10 <- economy[1:10,]
 
 both <- ggplot(data = economy10, aes(reorder(evtype, both), both)) + 
         geom_bar(stat = "identity", fill = "blue") +
-        scale_y_log10()+
         coord_flip() +
-        labs(y = "Total number of property and crop damage (in dolars)", x = "event type")
+        labs(y = "Total number of property and crop damage (in billion dolars)", x = "event type")
 prop <- ggplot(data = economy10, aes(reorder(evtype, propdmg), propdmg)) + 
         geom_bar(stat = "identity", fill = "lightblue") +
-        scale_y_log10()+
         coord_flip() +
-        labs(y = "Total number of property damage (in dolars)", x = "event type") 
+        labs(y = "Total number of property damage (in billion dolars)", x = "event type") 
 crop <- ggplot(data = economy10, aes(reorder(evtype, cropdmg), cropdmg)) +
         geom_bar(stat = "identity", fill = "lightblue") +
-        scale_y_log10()+
         coord_flip() +
-        labs(y = "Total number of crop damage (in dolars)", x = "event type") 
+        labs(y = "Total number of crop damage (in billoin dolars)", x = "event type") 
 grid.arrange(both, prop, crop,
-             top = "Top 10 types of weather events that cause severe economic problems")
+             top = "The top 10 types of weather events that cause economic problems")
 ```
 
-Tornado caused the greatest property damage and overall economic damage in the U.S. 
-from 1950 to 2011. Hail, however, caused the greatest crop damage. Flash flood 
-caused the second greatest property and crop damage.
+The flood caused the greatest property damage and overall economic damage in the U.S. 
+from 1950 to 2011. The drought, however, caused the greatest crop damage, followed by the flood. 
+the hurricane/typhoon caused the second greatest property and overall damage.
